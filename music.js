@@ -16,9 +16,9 @@
 //   Downloads  kept as MP3 with title in /Musicstreaming, playable offline.
 //   Tools      Diagnostics, Audio test, Last run (step log that survives a crash).
 //
-// Not tested on a real Bruce device. Written against Bruce's interpreter source (MicroQuickJS: dialog / keyboard /
-// storage / audio / display behaviour as in its code) and run under MicroQuickJS with a mock of Bruce's API and
-// against a live server.
+// Tested on a Lilygo T-Embed CC1101. Written against Bruce's interpreter source (MicroQuickJS: dialog / keyboard /
+// storage / audio / display behaviour as in its code) and also run under MicroQuickJS with a mock of Bruce's API
+// and against a live server. Other devices are untested: the layout is made for a 320x170 screen.
 
 var wifi = require("wifi");
 var dialog = require("dialog");

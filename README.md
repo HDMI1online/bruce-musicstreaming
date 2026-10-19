@@ -3,8 +3,9 @@
 An audio-only SoundCloud + YouTube player for the [Bruce](https://github.com/BruceDevices/firmware) firmware's
 JavaScript interpreter (T-Embed and other Bruce devices with a speaker and an SD card).
 
-> **Status: not tested on a real Bruce device.** It was written against Bruce's interpreter source and run under
-> MicroQuickJS with a mock of Bruce's API and against a live server. Expect rough edges and please report them.
+> **Status:** tested on a Lilygo T-Embed CC1101. It was written against Bruce's interpreter source and also run under
+> MicroQuickJS with a mock of Bruce's API and against a live server. Other devices are untested (the layout is made
+> for a 320x170 screen). Expect rough edges and please report them.
 
 ## What you need
 
