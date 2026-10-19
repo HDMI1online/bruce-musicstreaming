@@ -25,7 +25,8 @@ Settings (environment variables):
   MUSIC_CACHE (./cache)    where converted files live (deleted after use)
   MUSIC_MAX_JOBS (4)       conversions running at once       MUSIC_MAX_PER_IP (3)   ... per client address
   MUSIC_CACHE_MB (2048)    most disk used by converted files MUSIC_DAILY_MB (2048)  audio one address may fetch per day
-  MUSIC_MAX_MIN (30)       longest track in minutes
+  MUSIC_MAX_MIN (30)       longest track in minutes   MUSIC_MAX_INFLIGHT (6)  open requests one address may have
+  MUSIC_SONGS_PER_HOUR (40) different tracks one device may start per hour (an address gets 5x that, as a backstop)
 """
 
 import hashlib
@@ -40,7 +41,7 @@ import threading
 import time
 from pathlib import Path
 
-from flask import Blueprint, Flask, Response, abort, jsonify, request
+from flask import Blueprint, Flask, Response, abort, g, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 HOST = os.environ.get("MUSIC_HOST", "127.0.0.1")
@@ -54,6 +55,7 @@ MAX_PER_IP = int(os.environ.get("MUSIC_MAX_PER_IP", "3"))
 MAX_CACHE_BYTES = int(os.environ.get("MUSIC_CACHE_MB", "2048")) * 1048576
 DAILY_BYTES = int(os.environ.get("MUSIC_DAILY_MB", "2048")) * 1048576
 MAX_AUDIO_SECONDS = int(os.environ.get("MUSIC_MAX_MIN", "30")) * 60
+MAX_INFLIGHT = int(os.environ.get("MUSIC_MAX_INFLIGHT", "6"))   # simultaneous requests one address may have open
 KEEP_PER_DEVICE = 2                    # the current track + the prefetched next one
 IDLE_DONE_S, IDLE_WORKING_S = 600, 900  # forget finished / abandoned jobs after this
 
@@ -116,7 +118,7 @@ def _track_url(u):
     return u
 
 
-_HITS, _BYTES, HLOCK = {}, {}, threading.Lock()
+_HITS, _BYTES, _INFLIGHT, HLOCK = {}, {}, {}, threading.Lock()
 
 
 def _hit(bucket, limit, window=60):
@@ -131,6 +133,28 @@ def _hit(bucket, limit, window=60):
         if len(_HITS) > 5000:
             for k in [k for k, v in _HITS.items() if not v or now - v[-1] > window]:
                 del _HITS[k]
+
+
+SONGS_PER_HOUR = int(os.environ.get("MUSIC_SONGS_PER_HOUR", "40"))            # different tracks one device may start per hour
+IP_SONGS_PER_HOUR = int(os.environ.get("MUSIC_IP_SONGS_PER_HOUR", str(SONGS_PER_HOUR * 5)))   # ... and one address, whatever ids it sends
+_SONGS = {}
+
+
+def _song_quota(key, dev, ip):
+    """A device (and, as a backstop against made-up ids, an address) may start only so many different tracks per
+    hour. Starting the same track again (other EQ, replay) is free. Raises 429 when the limit is reached."""
+    now = time.time()
+    with HLOCK:
+        for who, limit in ((("d", dev), SONGS_PER_HOUR), (("i", ip), IP_SONGS_PER_HOUR)):
+            seen = {k: t for k, t in _SONGS.get(who, {}).items() if now - t < 3600}
+            if key not in seen and len(seen) >= limit:
+                abort(429, f"limit reached: {limit} songs per hour" + (" for this device" if who[0] == "d" else " from this address"))
+            _SONGS[who] = seen
+        for who in (("d", dev), ("i", ip)):
+            _SONGS[who][key] = now
+        if len(_SONGS) > 5000:
+            for w in [w for w, v in _SONGS.items() if not v or now - max(v.values()) > 3600]:
+                del _SONGS[w]
 
 
 def _daily_ok(add):
@@ -163,6 +187,24 @@ def _guard():
             abort(403, "this server is for the local network only")
     if not request.path.endswith(("/health", "/music/chunk")):      # chunk has its own limit
         _hit("all", 240)
+    # A chunk request can wait for the converter for up to 22 s: without a cap, a few open connections from one
+    # address would tie up every worker thread.
+    ip = client_ip()
+    with HLOCK:
+        if _INFLIGHT.get(ip, 0) >= MAX_INFLIGHT:
+            abort(429, "too many simultaneous requests")
+        _INFLIGHT[ip] = _INFLIGHT.get(ip, 0) + 1
+    g.inflight_ip = ip
+
+
+@app.teardown_request
+def _done(_exc):
+    ip = g.pop("inflight_ip", None)
+    if ip:
+        with HLOCK:
+            _INFLIGHT[ip] = max(0, _INFLIGHT.get(ip, 1) - 1)
+            if not _INFLIGHT[ip]:
+                del _INFLIGHT[ip]
 
 
 @app.after_request
@@ -608,6 +650,7 @@ def music_prepare():
         if job and job["state"] in ("working", "done") and job["params"] == (br, af):
             job["ts"] = time.time()
             return jsonify({"state": job["state"], "id": key})
+        _song_quota(key, dev, ip)                       # before anything is stopped or started
         mine = [k for k in BJOBS if k[1] == dev]
         for k in mine:                                  # this device moved on: stop its other running conversions
             if k != jk and BJOBS[k]["state"] == "working":
@@ -711,7 +754,8 @@ def main():
     print(f"Musicstreaming server on http://{HOST}:{PORT}/{TOKEN}", flush=True)
     try:
         from waitress import serve
-        serve(app, host=HOST, port=PORT, threads=16)
+        serve(app, host=HOST, port=PORT, threads=32, connection_limit=300, channel_timeout=30,
+              max_request_header_size=8192, max_request_body_size=1024)
     except ImportError:
         print("waitress not installed: using Flask's development server (pip install waitress)", file=sys.stderr)
         app.run(host=HOST, port=PORT, threaded=True)

@@ -10,9 +10,9 @@ JavaScript interpreter (T-Embed and other Bruce devices with a speaker and an SD
 
 1. A Bruce device with SD card and speaker, connected to WiFi (do that in Bruce's own WiFi menu first).
 2. **A server.** Bruce can't decode SoundCloud/YouTube streams itself, so the script talks to a small HTTP server
-   that finds, downloads and converts the audio (yt-dlp + ffmpeg). One is included: [`server/`](server/), a single
-   Python file (see "Host the server" below). Without a server the script can only play tracks you have already
-   downloaded.
+   that finds, downloads and converts the audio (yt-dlp + ffmpeg). The script uses a shared public server by default
+   (see "The shared server" below), or you host your own: [`server/`](server/) is a single Python file (see "Host the
+   server").
 
 ## Install
 
@@ -46,6 +46,21 @@ Temporary files live in `/Musicstreaming/cache` and are always deleted (after ea
   request is at most 12 s of audio.
 - Bruce's interpreter is MicroQuickJS (an ES5 subset): no `encodeURIComponent`, no typed-array `slice`, and
   `dialog.choice` returns the label. The script's menus are drawn by the script itself.
+
+## The shared server
+
+The script's default address (`SERVER_HTTP` at the top of `music.js`) is a small public server run by the author, so
+you can try it without hosting anything. Please know:
+
+- **Best effort, may change or disappear.** It runs on a Raspberry Pi at someone's home. Limits keep it fair:
+  40 different songs per hour per device, tracks up to 12 minutes, 2 conversions at once per address, 1 GB of audio per
+  day per address, 3 conversions at once for everyone. If it is busy you get "server busy": try again.
+- **No account, no password, nothing secret is sent.** The address is plain `http`, because Bruce's TLS stack often
+  can't connect: anyone on the network path (your WiFi, your provider) can see what you search and play.
+- **The server sees your IP address and what you search and play** (its web server keeps access logs). It is a separate,
+  locked-down service on its own user, with no access to anything else on that machine.
+- The author can't promise that nothing can go wrong with a public service. If you want to be independent of it,
+  host your own (next section) and set it under *Settings > Change server*.
 
 ## Host the server
 

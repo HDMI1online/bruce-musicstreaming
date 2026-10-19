@@ -1,8 +1,9 @@
 // Musicstreaming for the Bruce firmware: SoundCloud and YouTube, audio only, drawn menus.
 //
 // Copy to the SD card (e.g. /BruceScripts/music.js), connect Bruce to WiFi, run it from Bruce's JS menu.
-// It needs a server that provides the /bruce/music/* routes (see README.md). On first start it asks for the
-// server address (or set SERVER / SERVER_LAN / SERVER_HTTP below).
+// It needs a server that provides the /bruce/music/* routes (see README.md). By default it uses the shared public
+// server (SERVER_HTTP below); you can host your own (server/) and set SERVER / SERVER_LAN, or type an address
+// under Settings > Change server.
 //
 //   Search     SoundCloud, YouTube or both, ranked; filters, paging, history; "Trends" = SoundCloud charts.
 //   Player     Bruce can't stream and audio.playFile() blocks (any key stops it). So the whole track is loaded
@@ -27,9 +28,9 @@ var audio = require("audio");
 var display = require("display");
 
 // ---- settings ----------------------------------------------------------------------------
-var SERVER = "";        // optional: your server's https address (with its path / token). Empty = you type it on first start
+var SERVER = "";        // optional: your own server's https address (with its path / token)
 var SERVER_LAN = "";    // optional: the server on your home network, e.g. "http://192.168.1.20:5057"
-var SERVER_HTTP = "";   // optional: a plain-http address, if Bruce's https does not connect
+var SERVER_HTTP = "http://soosftp.duckdns.org/music";   // the shared public server (plain http: Bruce's https often fails); see README
 var SERVER_FILE = "/musicstreaming_server.txt";   // an address typed in under "Change server"
 var FOLDER = "/Musicstreaming";              // downloads, settings, history
 var CACHE = FOLDER + "/cache";          // pieces being played
